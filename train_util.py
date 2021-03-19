@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import models
 import matplotlib.pyplot as pyplt
-import config as conf
+import utils.config as conf
 from datetime import datetime
 
 class TrainUtil:

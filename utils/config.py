@@ -14,3 +14,9 @@ class Config:
         # Training Params
         self.TRAINING_SPLIT_PERCENT = 70
         self.SEED = 666
+
+        # Pi Settings
+        self.BUTTON_ID = 17
+        self.RESPEAKER_CHANNELS = 1  # Mono/Stereo
+        self.RESPEAKER_WIDTH = 2
+        self.RESPEAKER_INDEX = 1  # input card ID

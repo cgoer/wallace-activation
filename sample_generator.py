@@ -4,7 +4,7 @@ import random
 import os
 from scipy.io import wavfile
 import matplotlib.pyplot as pyplt
-import config as conf
+import utils.config as conf
 
 # TODO: document
 class SampleGenerator:
