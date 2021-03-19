@@ -1,4 +1,4 @@
-import apa102
+from . import apa102
 import time
 
 

@@ -18,7 +18,6 @@ class SampleGenerator:
         self.ty = config.TY
         self.clip_len_ms = config.CLIP_LEN_MS
         self.training_split = config.TRAINING_SPLIT_PERCENT
-        self.seed = config.SEED
         
         # Add Directories if missing
         if check_directories:
@@ -29,14 +28,18 @@ class SampleGenerator:
             for keyword in self.import_data_paths:
                 self.convert_all_to_wav(self.import_data_paths[keyword])
 
-        # Set Seed
-        np.random.seed(self.seed)
-
         # Fire
         self.generate_samples()
 
     def generate_samples(self):
+        print('Loading Data')
         keyword, non_keyword, background = self.load_data(self.import_data_paths)
+        print('Found Datasets:')
+        print('Keywords: ' + str(len(keyword)))
+        print('Non-Keywords: ' + str(len(non_keyword)))
+        print('Backgrounds: ' + str(len(background)))
+        print('----------')
+        datasets = 50
         keyword_train, keyword_test = self.split_train_test(keyword)
         non_keyword_train, non_keyword_test = self.split_train_test(non_keyword)
         background_train, background_test = self.split_train_test(background)
@@ -46,7 +49,10 @@ class SampleGenerator:
         run_type = 'train'
         spectrograms = []
         labels = []
-        for x in range(5):
+        runs = int(datasets*(self.training_split/100))
+        print('Processing Training Data')
+        for x in range(runs):
+            print(str(run_no) + '/' + str(runs))
             spectrogram, label = self.create_training_example(background_train, keyword_train, non_keyword_train, run_type, run_no)
             spectrograms.append(spectrogram)
             labels.append(label)
@@ -60,7 +66,10 @@ class SampleGenerator:
         run_type = 'test'
         spectrograms = []
         labels = []
-        for x in range(5):
+        runs = int(datasets*(1-self.training_split/100))
+        print('Processing Test Data')
+        for x in range(runs):
+            print(str(run_no) + '/' + str(runs))
             spectrogram, label = self.create_training_example(background_test, keyword_test, non_keyword_test, run_type, run_no)
             spectrograms.append(spectrogram)
             labels.append(label)
@@ -84,39 +93,52 @@ class SampleGenerator:
         start = self.clip_len_ms - time_left
         start = start + time_between_clips
 
+        did_write = False
+
         if ((start + segment_ms) < self.clip_len_ms):
             time_left = time_left - (segment_ms + time_between_clips)
-
             background = background.overlay(random_activate, position=start)
-        return background, time_left
+            did_write = True
+        return background, time_left, did_write
 
     def create_training_example(self, backgrounds, activates, negatives, run_type, run_no):
         background = random.choice(backgrounds) - 20
         label = np.zeros((1, self.ty))
-        random_indices = np.random.randint(len(activates), size=5)
+        random_indices = np.random.randint(len(activates), size=10)
         random_activates = [activates[i] for i in random_indices]
 
-        random_indices = np.random.randint(len(negatives), size=5)
+        random_indices = np.random.randint(len(negatives), size=10)
         random_negatives = [negatives[i] for i in random_indices]
-        random_order = np.random.randint(0,2,(5))
+
+        # Get a slight overweight on non-keywords
+        random_order = np.random.choice([0,1],10,True, [0.8,0.2])
 
         time_left = self.clip_len_ms
         keyword_count = 0
         non_keyword_count = 0
         while time_left and (keyword_count + non_keyword_count) < len(random_order):
-            time_between_clips = np.random.randint(500, 3000)
+            time_between_clips = np.random.randint(500, 1500)
+            if time_left < time_between_clips:
+                break
+
             if random_order[(keyword_count + non_keyword_count)] == 0:
-                background, time_left = self.insert_clip(background, random_negatives[non_keyword_count], time_left, time_between_clips)
+                background, time_left, did_write = self.insert_clip(background, random_negatives[non_keyword_count], time_left, time_between_clips)
                 non_keyword_count += 1
             else:
-                background, time_left = self.insert_clip(background, random_activates[keyword_count], time_left, time_between_clips)
+                background, time_left, did_write = self.insert_clip(background, random_activates[keyword_count], time_left, time_between_clips)
                 label = self.insert_ones(label, self.clip_len_ms - time_left)
                 keyword_count += 1
+
+            # If last word wasn't written, use next word from same pool (if its not the last one already)
+            if (did_write is False) and ((keyword_count + non_keyword_count + 1) < len(random_order)):
+                random_order[(keyword_count + non_keyword_count)+1] = random_order[(keyword_count + non_keyword_count)]
 
         background = self.match_target_amplitude(background, -20.0)
         file_path = self.export_data_paths['sound'] + run_type + '/' + str(run_no) + ".wav"
         file_handle = background.export(file_path, format="wav")
         spectrogram = self.graph_spectrogram(file_path)
+        label = np.swapaxes(label,0,1)
+        spectrogram = np.swapaxes(spectrogram,0,1)
 
         return spectrogram, label
 
@@ -154,7 +176,9 @@ class SampleGenerator:
                 background.append(background_sound[:self.clip_len_ms])
         for filename in os.listdir(paths['non_keyword']):
             if filename.endswith("wav"):
-                non_keyword.append(self.resample(AudioSegment.from_wav(paths['non_keyword'] + filename)))
+                nk = self.resample(AudioSegment.from_wav(paths['non_keyword'] + filename))
+                # only take up to 4s
+                non_keyword.append(nk[1000:4000])
         return (keyword, non_keyword, background)
 
     def convert_all_to_wav(self, directory):
