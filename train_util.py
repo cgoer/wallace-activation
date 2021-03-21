@@ -36,12 +36,39 @@ class TrainUtil:
         spectrograms_train, labels_train = self.load_data('train')
         print(spectrograms_train.shape)
         print(labels_train.shape)
+
         model = self.train(spectrograms_train, labels_train)
         spectrograms_test, labels_test = self.load_data('test')
         model.evaluate(spectrograms_test, labels_test)
 
         self.save_model(model)
 
+    def get_spectrogram(self, sound):
+        rate, data = wavfile.read(sound)
+        nfft = 200  # Length of each window segment
+        fs = 8000  # Sampling frequencies
+        noverlap = 120  # Overlap between windows
+        nchannels = data.ndim
+        if nchannels == 1:
+            pxx, freqs, bins, im = pyplt.specgram(data, nfft, fs, noverlap=noverlap)
+        elif nchannels == 2:
+            pxx, freqs, bins, im = pyplt.specgram(data[:, 0], nfft, fs, noverlap=noverlap)
+        return pxx
+
+    def convert_label(self, label):
+        converted_label = np.zeros((1, self.ty))
+        for sequence in label:
+            # add label at end time
+            converted_label = self.add_label(converted_label, sequence[1])
+
+        return converted_label
+
+    def add_label(self, y, segment_end_ms):
+        segment_end_y = int(segment_end_ms * self.ty / self.clip_len_ms)
+        for i in range(segment_end_y + 1, segment_end_y + 51):
+            if i < self.ty:
+                y[0, i] = 1
+        return y
 
 
     def train(self, spectrograms, labels):
@@ -67,9 +94,22 @@ class TrainUtil:
         return model
 
     def load_data(self, context):
-        spectrograms = np.load(self.import_data_paths['numpy'] + self.context_paths[context] + 'spectrograms.npy')
-        labels = np.load(self.import_data_paths['numpy'] + self.context_paths[context] + 'labels.npy')
-        return spectrograms, labels
+        path = self.import_data_paths['sound']+self.context_paths[context]
+        sound = []
+        imported_sounds = []
+        for filename in os.listdir(path):
+            if filename.endswith("wav"):
+                sound.append(self.get_spectrogram(path + filename))
+                imported_sounds.append(os.path.splitext(filename)[0])
+
+        path = self.import_data_paths['label']+self.context_paths[context]
+        label = []
+        for filename in imported_sounds:
+            label.append(self.convert_label(np.load(path + filename + '.npy')))
+
+        sound = np.swapaxes(np.array(sound), 0, 1)
+        label = np.swapaxes(np.array(label), 0, 1)
+        return sound, label
 
     def save_model(self, model):
         model.save(self.model_path+'wallace_activation_'+datetime.now().strftime("%d-%m-%Y_%H-%M-%S")+'.h5')
