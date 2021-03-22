@@ -3,16 +3,19 @@ import time
 import pyaudio
 import wave
 import utils.config as conf
-import os
 import utils.lights as lit
 from datetime import datetime
 
 
-class SampleRecorder:
+class SnippetRecorder:
+    """
+    Record a snippet with the Seeed RaspberryPi Hat.
+    Start the script and press the button to start recording.
+    Recording starts when the Lights turn on and stops when they turn off again.
+    """
     CHUNK = 1024
-    RECORD_SECONDS = 1
 
-    def __init__(self):
+    def __init__(self, record_seconds):
         # Setup config params
         config = conf.Config()
         self.sample_rate = config.WAV_FRAMERATE_HZ
@@ -20,6 +23,8 @@ class SampleRecorder:
         self.channels = config.RESPEAKER_CHANNELS
         self.width = config.RESPEAKER_WIDTH
         self.index = config.RESPEAKER_INDEX
+
+        self.RECORD_SECONDS = record_seconds
 
         # init button
         GPIO.setmode(GPIO.BCM)
@@ -29,10 +34,10 @@ class SampleRecorder:
         self.light = lit.Lights()
         self.light.off()
 
-        # FIRE!
-        self.wait_for_action()
-
     def wait_for_action(self):
+        """
+        Wait for button press to start recording. Endless loop.
+        """
         while True:
             state = GPIO.input(self.button)
             if not state:
@@ -41,9 +46,13 @@ class SampleRecorder:
                 self.record()
             else:
                 print('Press the Button to record')
-            time.sleep(0.5)
+            time.sleep(1)
 
     def record(self):
+        """
+        Record sound and save in a file.
+        :return:
+        """
         p = pyaudio.PyAudio()
         stream = p.open(
             rate=self.sample_rate,
@@ -81,4 +90,6 @@ class SampleRecorder:
 
 
 if __name__ == '__main__':
-    SampleRecorder()
+    record_seconds = 1
+    sr = SnippetRecorder(record_seconds)
+    sr.wait_for_action()
