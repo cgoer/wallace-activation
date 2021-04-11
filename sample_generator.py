@@ -234,6 +234,6 @@ class SampleGenerator:
 
 
 if __name__ == '__main__':
-    total_samples = 5000
+    total_samples = 500
     sg = SampleGenerator()
     sg.run(total_samples)
