@@ -18,15 +18,11 @@ class Train:
         self.framerate = config.WAV_FRAMERATE_HZ
         self.clip_len_ms = config.CLIP_LEN_MS
         self.training_split = config.TRAINING_SPLIT_PERCENT
-        self.seed = config.SEED
+        self.model_type = 1
+
 
         self.sound_shape = None
         self.model = None
-
-
-        # set seed
-        #np.random.seed(self.seed)
-        #tf.random.set_seed(self.seed)
 
     def run(self):
         # load train data
@@ -36,6 +32,7 @@ class Train:
         print(labels_train.shape)
         spectrograms_test, labels_test = self.load_data('test')
         model = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
+        spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
         spectrograms_eval, labels_eval = self.load_data('eval')
         print('evaluating model')
         model.evaluate(spectrograms_eval, labels_eval)
@@ -79,6 +76,49 @@ class Train:
     def get_model(self):
         if self.sound_shape is None:
             exit(1)
+        if self.model is not None:
+            return self.model
+        if self.model_type == 1:
+            return self.model1()
+        if self.model_type == 2:
+            return self.model2()
+
+    def model2(self):
+        if self.sound_shape is None:
+            exit(1)
+        if self.model is None:
+            print(self.sound_shape)
+            model = models.Sequential([
+                layers.Input(shape=self.sound_shape),
+                layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
+                layers.BatchNormalization(),
+                layers.Activation('relu'),
+                layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
+                layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
+                layers.BatchNormalization(),
+                layers.Activation('relu'),
+                layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
+                layers.BatchNormalization(),
+                layers.Activation('relu'),
+                layers.Dropout(0.8),
+                layers.GRU(units=128, return_sequences=True),
+                layers.Dropout(0.8),
+                layers.BatchNormalization(),
+                layers.GRU(units=128, return_sequences=True),
+                layers.Dropout(0.8),
+                layers.BatchNormalization(),
+                layers.Dropout(0.8),
+                layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
+                ])
+            opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
+            model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
+            model.summary()
+            self.model = model
+        return self.model
+
+    def model1(self):
+        if self.sound_shape is None:
+            exit(1)
         if self.model is None:
             model = models.Sequential([
                 layers.Input(shape=self.sound_shape),
@@ -115,7 +155,12 @@ class Train:
 
         model = self.get_model()
         layers = model.layers
-        label_shape = layers[0].output_shape
+        layer_no = 0
+        if self.model_type == 2:
+            layer_no = 15
+
+
+        label_shape = layers[layer_no].output_shape
         label_shape = label_shape[1]
 
         path = self.import_data_paths['label']+self.context_paths[context]

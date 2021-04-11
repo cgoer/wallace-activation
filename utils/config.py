@@ -12,7 +12,6 @@ class Config:
 
         # Training Params
         self.TRAINING_SPLIT_PERCENT = 70
-        self.SEED = 666
 
         # Pi Settings
         self.BUTTON_ID = 17
