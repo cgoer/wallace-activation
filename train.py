@@ -7,9 +7,10 @@ from tensorflow.keras import models
 import matplotlib.pyplot as pyplt
 import utils.config as conf
 from datetime import datetime
+import json
 
 class Train:
-    def __init__(self):
+    def __init__(self, batch, model_filename=None):
         # import config
         config = conf.Config()
         self.context_paths = config.CONTEXT_PATHS
@@ -18,29 +19,28 @@ class Train:
         self.framerate = config.WAV_FRAMERATE_HZ
         self.clip_len_ms = config.CLIP_LEN_MS
         self.training_split = config.TRAINING_SPLIT_PERCENT
-        self.model_type = 1
-        self.batches = config.BATCHES
+        self.model_type = 2
+        self.batch = batch
+        self.model_filename = model_filename
 
 
         self.sound_shape = None
         self.model = None
 
     def run(self):
-        for i in range(self.batches):
-            # load train data
-            print('load train data')
-            spectrograms_train, labels_train = self.load_data('train', i)
-            print(spectrograms_train.shape)
-            print(labels_train.shape)
-            spectrograms_test, labels_test = self.load_data('test', i)
-            self.model = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
-            spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
-            spectrograms_eval, labels_eval = self.load_data('eval', i)
-            print('evaluating model')
-            self.model.evaluate(spectrograms_eval, labels_eval)
-            spectrograms_eval, labels_eval = None, None
-
-        self.save_model(self.model)
+        # load train data
+        print('load train data')
+        spectrograms_train, labels_train = self.load_data('train', self.batch)
+        print(spectrograms_train.shape)
+        print(labels_train.shape)
+        spectrograms_test, labels_test = self.load_data('test', self.batch)
+        self.model, history = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
+        spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
+        spectrograms_eval, labels_eval = self.load_data('eval', self.batch)
+        print('evaluating model')
+        self.model.evaluate(spectrograms_eval, labels_eval)
+        spectrograms_eval, labels_eval = None, None
+        return self.save_model(self.model, history, self.batch)
 
     def get_spectrogram(self, sound):
         rate, data = wavfile.read(sound)
@@ -73,18 +73,24 @@ class Train:
 
     def train(self, spectrograms, labels, spectrograms_test, labels_test):
         model = self.get_model()
-        model.fit(spectrograms, labels, epochs=10, validation_data=(spectrograms_test, labels_test))
-        return model
+        history = model.fit(spectrograms, labels, epochs=100, validation_data=(spectrograms_test, labels_test))
+        return model, history
 
     def get_model(self):
         if self.sound_shape is None:
             exit(1)
         if self.model is not None:
             return self.model
+        if self.model_filename is not None:
+            return self.load_model()
         if self.model_type == 1:
             return self.model1()
         if self.model_type == 2:
             return self.model2()
+
+    def load_model(self):
+        self.model = tf.keras.models.load_model(self.model_filename)
+        return self.model
 
     def model2(self):
         if self.sound_shape is None:
@@ -103,14 +109,14 @@ class Train:
                 layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
                 layers.BatchNormalization(),
                 layers.Activation('relu'),
-                layers.Dropout(0.8),
+                layers.Dropout(0.2),
                 layers.GRU(units=128, return_sequences=True),
-                layers.Dropout(0.8),
+                layers.Dropout(0.2),
                 layers.BatchNormalization(),
                 layers.GRU(units=128, return_sequences=True),
-                layers.Dropout(0.8),
+                layers.Dropout(0.2),
                 layers.BatchNormalization(),
-                layers.Dropout(0.8),
+                layers.Dropout(0.2),
                 layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
                 ])
             opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
@@ -145,7 +151,7 @@ class Train:
         return self.model
 
     def load_data(self, context, batch_no):
-        path = self.import_data_paths['sound']+self.context_paths[context]+'/'+str(batch_no)+'/'
+        path = self.import_data_paths['sound']+self.context_paths[context]+str(batch_no)+'/'
         sounds = []
         imported_sounds = []
 
@@ -166,7 +172,7 @@ class Train:
         label_shape = layers[layer_no].output_shape
         label_shape = label_shape[1]
 
-        path = self.import_data_paths['label']+self.context_paths[context]+'/'+str(batch_no)+'/'
+        path = self.import_data_paths['label']+self.context_paths[context]+str(batch_no)+'/'
         labels = []
         for filename in imported_sounds:
             label = self.convert_label(label_shape, np.load(path + filename + '.npy'))
@@ -174,9 +180,21 @@ class Train:
 
         return np.array(sounds), np.array(labels)
 
-    def save_model(self, model):
-        model.save(self.model_path+'wallace_activation_'+datetime.now().strftime("%d-%m-%Y_%H-%M-%S")+'.h5')
+    def save_model(self, model, history, batch):
+        model_path = self.model_path+'wallace_activation_batch'+str(batch)+'_'+datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        model.save(model_path)
+        with open(model_path+'.json', 'w') as historyfile:
+            json.dump(history.history, historyfile)
+        return model_path
 
 if __name__ == '__main__':
-    tm = Train()
-    tm.run()
+    config = conf.Config()
+    batches = config.BATCHES
+    model_path = None
+    start_batch = 0
+    for batch in range(batches):
+        if batch < start_batch:
+            continue
+        print('Starting Batch '+str(batch)+'/'+str(batches))
+        tm = Train(batch, model_path)
+        model_path = tm.run()
