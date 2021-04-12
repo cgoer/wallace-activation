@@ -12,6 +12,8 @@ class Config:
 
         # Training Params
         self.TRAINING_SPLIT_PERCENT = 70
+        self.BATCHES = 2
+        self.BATCH_SIZE = 100
 
         # Pi Settings
         self.BUTTON_ID = 17

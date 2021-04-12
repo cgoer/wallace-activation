@@ -24,6 +24,8 @@ class SampleGenerator:
         self.framerate = config.WAV_FRAMERATE_HZ
         self.clip_len_ms = config.CLIP_LEN_MS
         self.training_split = config.TRAINING_SPLIT_PERCENT
+        self.batches = config.BATCHES
+        self.batch_size = config.BATCH_SIZE
         
         # Add Directories if missing
         self.add_missing_directories()
@@ -32,10 +34,9 @@ class SampleGenerator:
         for keyword in self.import_data_paths:
             self.convert_all_to_wav(self.import_data_paths[keyword])
 
-    def run(self, datasets):
+    def run(self):
         """
         Generate x datasets. Load, convert, resample and split Data before generating.
-        :param int datasets: number of total datasets to generate (train + test)
         """
         print('Loading Data')
         keyword, non_keyword, background = self.load_data(self.import_data_paths)
@@ -48,18 +49,19 @@ class SampleGenerator:
         non_keyword_train, non_keyword_test, non_keyword_eval = self.split_train_test_eval(non_keyword)
         background_train, background_test, background_eval = self.split_train_test_eval(background)
 
-        runs = int(datasets*(self.training_split/100))
-        self.generate_samples('train', runs, background_train, keyword_train, non_keyword_train)
+        for i in range(self.batches):
+            runs = int(self.batch_size*(self.training_split/100))
+            self.generate_samples('train', i, runs, background_train, keyword_train, non_keyword_train)
 
-        runs = int((datasets*(1-self.training_split/100)) / 2)
-        self.generate_samples('test', runs, background_test, keyword_test, non_keyword_test)
+            runs = int((self.batch_size*(1-self.training_split/100)) / 2)
+            self.generate_samples('test', i, runs, background_test, keyword_test, non_keyword_test)
 
-        runs = int((datasets*(1-self.training_split/100)) / 2)
-        self.generate_samples('eval', runs, background_eval, keyword_eval, non_keyword_eval)
+            runs = int((self.batch_size*(1-self.training_split/100)) / 2)
+            self.generate_samples('eval', i, runs, background_eval, keyword_eval, non_keyword_eval)
 
         print('done.')
 
-    def generate_samples(self, run_type, runs, backgrounds, keywords, non_keywords):
+    def generate_samples(self, run_type, batch, runs, backgrounds, keywords, non_keywords):
         """
         Generate x samples of randomly selected backgrounds, keywords and non_keywords.
         :param str run_type: Information about what type of sample set is generated (train/test/eval)
@@ -73,9 +75,9 @@ class SampleGenerator:
             run_no += 1
             print(str(run_no) + '/' + str(runs))
             self.generate_and_save_sample(backgrounds, keywords, non_keywords,
-                                                              run_type, run_no)
+                                                              run_type, run_no, batch)
 
-    def generate_and_save_sample(self, backgrounds, keywords, non_keywords, run_type, run_no):
+    def generate_and_save_sample(self, backgrounds, keywords, non_keywords, run_type, run_no, batch):
         """
         Pick a random background and randomly place keywords and non-keywords onto it.
         Saves the generated sample and labels into desired directories.
@@ -127,11 +129,11 @@ class SampleGenerator:
                 order[(keyword_count + non_keyword_count)+1] = order[(keyword_count + non_keyword_count)]
 
         # Export sound File
-        file_path = self.export_data_paths['sound'] + run_type + '/' + str(run_no) + ".wav"
+        file_path = self.export_data_paths['sound'] + run_type + '/' + str(batch) + '/' + str(run_no) + ".wav"
         background.export(file_path, format="wav")
 
         # Export label
-        np.save(self.export_data_paths['label'] + self.context_paths[run_type] + str(run_no) + '.npy', np.array(label))
+        np.save(self.export_data_paths['label'] + self.context_paths[run_type] + str(batch) + '/' + str(run_no) + '.npy', np.array(label))
 
     def add_clip_to_background(self, background, sound_snippet, time_left, time_between_clips):
         """
@@ -209,8 +211,9 @@ class SampleGenerator:
         """
         for export_dirs in self.export_data_paths:
             for contexts in self.context_paths:
-                if not os.path.exists(self.export_data_paths[export_dirs] + self.context_paths[contexts]):
-                    os.makedirs(self.export_data_paths[export_dirs] + self.context_paths[contexts])
+                for i in range(self.batches):
+                    if not os.path.exists(self.export_data_paths[export_dirs] + self.context_paths[contexts] + '/' + str(i)):
+                        os.makedirs(self.export_data_paths[export_dirs] + self.context_paths[contexts]+ '/' + str(i))
 
         for import_dirs in self.import_data_paths:
             if not os.path.exists(self.import_data_paths[import_dirs]):
@@ -234,6 +237,5 @@ class SampleGenerator:
 
 
 if __name__ == '__main__':
-    total_samples = 500
     sg = SampleGenerator()
-    sg.run(total_samples)
+    sg.run()

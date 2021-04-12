@@ -19,25 +19,28 @@ class Train:
         self.clip_len_ms = config.CLIP_LEN_MS
         self.training_split = config.TRAINING_SPLIT_PERCENT
         self.model_type = 1
+        self.batches = config.BATCHES
 
 
         self.sound_shape = None
         self.model = None
 
     def run(self):
-        # load train data
-        print('load train data')
-        spectrograms_train, labels_train = self.load_data('train')
-        print(spectrograms_train.shape)
-        print(labels_train.shape)
-        spectrograms_test, labels_test = self.load_data('test')
-        model = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
-        spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
-        spectrograms_eval, labels_eval = self.load_data('eval')
-        print('evaluating model')
-        model.evaluate(spectrograms_eval, labels_eval)
+        for i in range(self.batches):
+            # load train data
+            print('load train data')
+            spectrograms_train, labels_train = self.load_data('train', i)
+            print(spectrograms_train.shape)
+            print(labels_train.shape)
+            spectrograms_test, labels_test = self.load_data('test', i)
+            self.model = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
+            spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
+            spectrograms_eval, labels_eval = self.load_data('eval', i)
+            print('evaluating model')
+            self.model.evaluate(spectrograms_eval, labels_eval)
+            spectrograms_eval, labels_eval = None, None
 
-        self.save_model(model)
+        self.save_model(self.model)
 
     def get_spectrogram(self, sound):
         rate, data = wavfile.read(sound)
@@ -141,8 +144,8 @@ class Train:
             self.model = model
         return self.model
 
-    def load_data(self, context):
-        path = self.import_data_paths['sound']+self.context_paths[context]
+    def load_data(self, context, batch_no):
+        path = self.import_data_paths['sound']+self.context_paths[context]+'/'+str(batch_no)+'/'
         sounds = []
         imported_sounds = []
 
@@ -163,7 +166,7 @@ class Train:
         label_shape = layers[layer_no].output_shape
         label_shape = label_shape[1]
 
-        path = self.import_data_paths['label']+self.context_paths[context]
+        path = self.import_data_paths['label']+self.context_paths[context]+'/'+str(batch_no)+'/'
         labels = []
         for filename in imported_sounds:
             label = self.convert_label(label_shape, np.load(path + filename + '.npy'))
