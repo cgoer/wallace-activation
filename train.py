@@ -19,10 +19,9 @@ class Train:
         self.framerate = config.WAV_FRAMERATE_HZ
         self.clip_len_ms = config.CLIP_LEN_MS
         self.training_split = config.TRAINING_SPLIT_PERCENT
-        self.model_type = 2
         self.batch = batch
         self.model_filename = model_filename
-
+        self.epochs = 50
 
         self.sound_shape = None
         self.model = None
@@ -35,10 +34,12 @@ class Train:
         print(labels_train.shape)
         spectrograms_test, labels_test = self.load_data('test', self.batch)
         self.model, history = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
+        # wipe data
         spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
         spectrograms_eval, labels_eval = self.load_data('eval', self.batch)
         print('evaluating model')
         self.model.evaluate(spectrograms_eval, labels_eval)
+        # wipe data
         spectrograms_eval, labels_eval = None, None
         return self.save_model(self.model, history, self.batch)
 
@@ -73,81 +74,55 @@ class Train:
 
     def train(self, spectrograms, labels, spectrograms_test, labels_test):
         model = self.get_model()
-        history = model.fit(spectrograms, labels, epochs=100, validation_data=(spectrograms_test, labels_test))
+        history = model.fit(spectrograms, labels, epochs=self.epochs, validation_data=(spectrograms_test, labels_test))
         return model, history
 
     def get_model(self):
-        if self.sound_shape is None:
-            exit(1)
+        # Return cached model
         if self.model is not None:
             return self.model
+
+        # load certain model if provided
         if self.model_filename is not None:
             return self.load_model()
-        if self.model_type == 1:
-            return self.model1()
-        if self.model_type == 2:
-            return self.model2()
+
+        # define new model
+        if self.sound_shape is None:
+            exit(1)
+        return self.set_model(self.sound_shape)
+
 
     def load_model(self):
         self.model = tf.keras.models.load_model(self.model_filename)
         return self.model
 
-    def model2(self):
-        if self.sound_shape is None:
-            exit(1)
-        if self.model is None:
-            print(self.sound_shape)
-            model = models.Sequential([
-                layers.Input(shape=self.sound_shape),
-                layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
-                layers.BatchNormalization(),
-                layers.Activation('relu'),
-                layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
-                layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
-                layers.BatchNormalization(),
-                layers.Activation('relu'),
-                layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
-                layers.BatchNormalization(),
-                layers.Activation('relu'),
-                layers.Dropout(0.2),
-                layers.GRU(units=128, return_sequences=True),
-                layers.Dropout(0.2),
-                layers.BatchNormalization(),
-                layers.GRU(units=128, return_sequences=True),
-                layers.Dropout(0.2),
-                layers.BatchNormalization(),
-                layers.Dropout(0.2),
-                layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
-                ])
-            opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
-            model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
-            model.summary()
-            self.model = model
-        return self.model
-
-    def model1(self):
-        if self.sound_shape is None:
-            exit(1)
-        if self.model is None:
-            model = models.Sequential([
-                layers.Input(shape=self.sound_shape),
-                layers.Conv1D(196, kernel_size=15, strides=4, activation=tf.nn.relu),
-                layers.BatchNormalization(),
-                layers.Activation('relu'),
-                layers.Dropout(0.8),
-                layers.GRU(units=128, return_sequences=True),
-                layers.Dropout(0.8),
-                layers.BatchNormalization(),
-                layers.GRU(units=128, return_sequences=True),
-                layers.Dropout(0.8),
-                layers.BatchNormalization(),
-                layers.Dropout(0.8),
-                layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
-                ])
-            opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
-            model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
-            model.summary()
-            self.model = model
+    def set_model(self, sound_shape):
+        model = models.Sequential([
+            layers.Input(shape=sound_shape),
+            layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
+            layers.BatchNormalization(),
+            layers.Activation('relu'),
+            layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
+            layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
+            layers.BatchNormalization(),
+            layers.Activation('relu'),
+            layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
+            layers.BatchNormalization(),
+            layers.Activation('relu'),
+            layers.Dropout(0.2),
+            layers.GRU(units=128, return_sequences=True),
+            layers.Dropout(0.2),
+            layers.BatchNormalization(),
+            layers.GRU(units=128, return_sequences=True),
+            layers.Dropout(0.2),
+            layers.BatchNormalization(),
+            layers.Dropout(0.2),
+            layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
+            ])
+        opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
+        model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
+        model.summary()
+        self.model = model
         return self.model
 
     def load_data(self, context, batch_no):
@@ -164,12 +139,8 @@ class Train:
 
         model = self.get_model()
         layers = model.layers
-        layer_no = 0
-        if self.model_type == 2:
-            layer_no = 15
 
-
-        label_shape = layers[layer_no].output_shape
+        label_shape = layers[15].output_shape
         label_shape = label_shape[1]
 
         path = self.import_data_paths['label']+self.context_paths[context]+str(batch_no)+'/'
