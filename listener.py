@@ -16,7 +16,6 @@ class Listener:
         config = conf.Config()
         self.sample_rate = config.WAV_FRAMERATE_HZ
         self.channels = config.RESPEAKER_CHANNELS
-        self.width = config.RESPEAKER_WIDTH
         self.recording_chunk = config.RECORDING_CHUNK
         self.max_recording_time_s = config.MAX_RECORDING_S
         self.button = config.BUTTON_ID
@@ -32,7 +31,6 @@ class Listener:
         self.sample_chunks = int(self.sample_rate * self.chunk_duration)
         self.clip_len_s = int(config.CLIP_LEN_MS/1000)
         self.feed_samples = int(self.sample_rate * self.clip_len_s)
-        self.audio_format = self.pyaudio.get_format_from_width(self.width)
 
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
 
@@ -44,7 +42,7 @@ class Listener:
 
     def listen(self):
         self.queue = Queue()
-        self.data = np.zeros(self.feed_samples, dtype=self.audio_format)
+        self.data = np.zeros(self.feed_samples, dtype='int16')
         stream = self.get_stream()
         stream.start_stream()
 
@@ -95,7 +93,7 @@ class Listener:
         for i in range(0, int(self.sample_rate / self.recording_chunk * self.max_recording_time_s)):
             data = stream.read(self.recording_chunk)
             frames.append(data)
-            data_np = np.frombuffer(data, dtype=self.audio_format)
+            data_np = np.frombuffer(data, 'int16')
             if np.abs(data_np).mean() < self.silence_threshold:
                 silent_frames += 1
 
@@ -109,7 +107,7 @@ class Listener:
         filename = 'command' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
         wf = wave.open('test/' + filename, 'wb')
         wf.setnchannels(self.channels)
-        wf.setsampwidth(pyaudio.get_sample_size(self.audio_format))
+        wf.setsampwidth(pyaudio.get_sample_size('int16'))
         wf.setframerate(self.sample_rate)
         wf.writeframes(b''.join(frames))
         wf.close()
@@ -159,7 +157,7 @@ class Listener:
 
     def get_stream(self):
         stream = self.pyaudio.open(
-            format=self.audio_format,
+            format='int16',
             channels=1,
             rate=self.sample_rate,
             input=True,
