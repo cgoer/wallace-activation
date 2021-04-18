@@ -9,6 +9,7 @@ class Config:
         # Sound Params
         self.WAV_FRAMERATE_HZ = 44100
         self.CLIP_LEN_MS = 10000
+        self.RECORDING_CHUNK = 1024
 
         # Training Params
         self.TRAINING_SPLIT_PERCENT = 70
@@ -20,3 +21,6 @@ class Config:
         self.RESPEAKER_CHANNELS = 1  # Mono/Stereo
         self.RESPEAKER_WIDTH = 2
         self.RESPEAKER_INDEX = 1  # input card ID
+
+        # Listener Settings
+        self.MAX_RECORDING_S = 10

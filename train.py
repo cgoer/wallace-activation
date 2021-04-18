@@ -154,8 +154,17 @@ class Train:
     def save_model(self, model, history, batch):
         model_path = self.model_path+'wallace_activation_batch'+str(batch)+'_'+datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         model.save(model_path)
+
+        # Save history
         with open(model_path+'.json', 'w') as historyfile:
             json.dump(history.history, historyfile)
+
+        # Convert and save as tflite model
+        converter = tf.lite.TFLiteConverter.from_saved_model(model_path)  # path to the SavedModel directory
+        tflite_model = converter.convert()
+        with open(model_path+'.tflite', 'wb') as f:
+            f.write(tflite_model)
+
         return model_path
 
 if __name__ == '__main__':

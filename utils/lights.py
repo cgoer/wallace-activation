@@ -28,3 +28,9 @@ class Lights:
             colors = [i * v for v in self.basis]
             self.set(colors)
             time.sleep(0.01)
+
+    def processing(self):
+        self.listen()
+
+    def mute(self):
+        self.listen()
