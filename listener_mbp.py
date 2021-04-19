@@ -1,8 +1,8 @@
-import RPi.GPIO as GPIO
+#import RPi.GPIO as GPIO
 import numpy as np
 import matplotlib.pyplot as plt
 import utils.config as conf
-import utils.lights as light
+#import utils.lights as light
 import wave
 import pyaudio
 import time
@@ -20,12 +20,12 @@ class Listener:
         self.max_recording_time_s = config.MAX_RECORDING_S
         self.button = config.BUTTON_ID
 
-        self.light = light.Lights()
+        #self.light = light.Lights()
         self.pyaudio = pyaudio.PyAudio()
 
         # init button
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.button, GPIO.IN)
+        #GPIO.setmode(GPIO.BCM)
+        #GPIO.setup(self.button, GPIO.IN)
 
         self.silence_threshold = 100
         self.chunk_duration = 0.5
@@ -39,9 +39,12 @@ class Listener:
         self.feed_samples = int(self.sample_rate * self.clip_len_s)
 
         self.queue = Queue()
-        self.data = np.zeros(self.feed_samples, dtype='int8')
+        self.data = np.zeros(self.feed_samples, dtype='int16')
+        self.recording = []
 
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
+
+        self.wait = 0
 
     def run(self):
         while True:
@@ -51,7 +54,7 @@ class Listener:
 
     def listen(self):
         print('listening')
-        self.light.off()
+        #self.light.off()
 
 
         stream = self.get_stream()
@@ -59,8 +62,8 @@ class Listener:
 
         try:
             while not self.muted:
-                self.data = self.queue.get()
-                if self.check_for_keyword(self.get_spectrogram(self.data)):
+                data = self.queue.get()
+                if len(data) > 0 and self.check_for_keyword(self.get_spectrogram(data)):
                     self.after_keyword_action()
                 self.check_for_mute_action()
         except (KeyboardInterrupt, SystemExit):
@@ -72,25 +75,28 @@ class Listener:
         stream.close()
 
     def check_for_mute_action(self):
-        state = GPIO.input(self.button)
+        state = True
         # return if button was not pressed
         if state:
             return
 
         self.muted = not self.muted
         if self.muted:
-            self.light.mute()
+            print('light muted')
 
     def check_for_keyword(self, spectrogram):
+        if self.wait < 20:
+            self.wait +=1
+            return False
         spectrogram = np.float32(np.expand_dims(spectrogram.swapaxes(0, 1), axis=0))
         self.interpreter.set_tensor(self.input_details[0]['index'], spectrogram)
         self.interpreter.invoke()
         output_data = self.interpreter.get_tensor(self.output_details[0]['index'])
-        predictions = output_data[0][0]
+        predictions = np.reshape(output_data, -1)
 
         # remove the first few parts of the array due to weird prediction at the beginning
         predictions = predictions[50:]
-
+        return True
         return predictions > self.true_threshold
 
 
@@ -98,43 +104,50 @@ class Listener:
         self.recorded_frames = 0
         self.silent_frames = 0
         self.recording_state = True
-        self.light.listen()
+        self.queue.empty()
+        print('lights listen')
 
 
     def after_recording(self, data):
-        self.recording_state = False
-        time.sleep(5)
 
-        self.light.processing()
+        print('lights processing')
 
         # TODO: For now, save the file
-        filename = 'command' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
-        wf = wave.open('test/' + filename, 'wb')
+        filename = 'test' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
+        wf = wave.open(filename, 'wb')
         wf.setnchannels(self.channels)
-        wf.setsampwidth(pyaudio.get_sample_size(pyaudio.paInt8))
+        wf.setsampwidth(pyaudio.get_sample_size(pyaudio.paInt16))
         wf.setframerate(self.sample_rate)
         wf.writeframes(b''.join(data))
         wf.close()
 
+        self.recording_state = False
+        self.recording = []
+        self.data = np.zeros(self.feed_samples, dtype='int16')
 
-        self.light.off()
+        print('lights off')
 
     def callback(self, in_data, frame_count, time_info, status):
-        data = np.frombuffer(in_data, dtype='int8')
+        data = np.frombuffer(in_data, dtype='int16')
         if self.recording_state:
-            self.data = np.append(self.data, data)
+            print('#recording state')
+            self.recording = np.append(self.recording, in_data)
             self.recorded_frames +=1
             if (np.abs(data).mean() < self.silence_threshold):
                 self.silent_frames +=1
-            if (self.recorded_frames > self.max_recording_time_s) or self.silent_frames > (2*self.sample_rate):
-                self.after_recording(self.data[-(self.recorded_frames*self.sample_rate)])
+            if (self.recorded_frames >= self.max_recording_time_s) or self.silent_frames > 2:
+                print('recorded frames:' + str(self.recorded_frames))
+                print('silent frames:' + str(self.silent_frames))
+                self.after_recording(self.recording)
             return (in_data, pyaudio.paContinue)
 
         # return if there was no noise
         if np.abs(data).mean() < self.silence_threshold:
+            print('x')
             return (in_data, pyaudio.paContinue)
 
         self.data = np.append(self.data, data)
+        print('.')
         if len(self.data) > self.feed_samples:
             self.data = self.data[-self.feed_samples:]
             self.queue.put(self.data)
@@ -162,7 +175,7 @@ class Listener:
 
     def get_stream(self):
         stream = self.pyaudio.open(
-            format=pyaudio.paInt8,
+            format=pyaudio.paInt16,
             channels=1,
             rate=self.sample_rate,
             input=True,
