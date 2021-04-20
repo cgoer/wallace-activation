@@ -1,36 +1,33 @@
-from . import apa102
-import time
+from apa102_pi.driver import apa102
 
 
 class Lights:
-    LED_NO = 3
-
     def __init__(self):
-        self.basis = [0] * 3 * self.LED_NO
-        self.basis[0] = 2
-        self.basis[3] = 1
-        self.basis[4] = 1
-        self.basis[7] = 2
+        self.strip = apa102.APA102(num_led=3, mosi=10, sclk=11, order='rbg')
+        self.strip.set_global_brightness(15)
 
-        self.colors = [0] * 3 * self.LED_NO
-        self.dev = apa102.APA102(num_led=self.LED_NO)
+        self.BLUE = '0x0000FF'
+        self.RED = '0xFF0000'
+        self.WHITE = '0x000000'
 
     def off(self):
-        self.set([0] * 3 * self.LED_NO)
-
-    def set(self, colors):
-        for i in range(self.LED_NO):
-            self.dev.set_pixel(i, int(colors[3 * i]), int(colors[3 * i + 1]), int(colors[3 * i + 2]))
-        self.dev.show()
+        self.strip.clear_strip()
+        self.strip.cleanup()
 
     def listen(self):
-        for i in range(1, 25):
-            colors = [i * v for v in self.basis]
-            self.set(colors)
-            time.sleep(0.01)
+        self.strip.set_pixel_rgb(1, self.BLUE)
+        self.strip.set_pixel_rgb(2, self.BLUE)
+        self.strip.set_pixel_rgb(3, self.BLUE)
+        self.strip.show()
 
     def processing(self):
-        self.listen()
+        self.strip.set_pixel_rgb(1, self.WHITE)
+        self.strip.set_pixel_rgb(2, self.BLUE)
+        self.strip.set_pixel_rgb(3, self.WHITE)
+        self.strip.show()
 
     def mute(self):
-        self.listen()
+        self.strip.set_pixel_rgb(1, self.RED)
+        self.strip.set_pixel_rgb(2, self.RED)
+        self.strip.set_pixel_rgb(3, self.RED)
+        self.strip.show()

@@ -5,3 +5,4 @@ PyAudio~=0.2.11
 pydub~=0.25.1
 scipy~=1.6.1
 rpi~=0.0.1
+apa102-pi~=2.4.1
