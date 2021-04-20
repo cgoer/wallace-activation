@@ -21,6 +21,14 @@ class Config:
         self.RESPEAKER_CHANNELS = 1  # Mono/Stereo
         self.RESPEAKER_WIDTH = 2
         self.RESPEAKER_INDEX = 1  # input card ID
+        self.RESPEAKER_FORMAT = 'int16'
+
+        # Mac Settings
+        self.MAC_CHANNELS = 1
+        self.MAC_WIDTH = 2
+        self.MAC_INDEX = 0
+        self.MAC_FORMAT = 'int16'
 
         # Listener Settings
-        self.MAX_RECORDING_S = 10
+        self.MAX_RECORDING_FRAMES = 15
+        self.MAX_SILENT_FRAMES = 5

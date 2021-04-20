@@ -1,8 +1,6 @@
-import RPi.GPIO as GPIO
 import numpy as np
 import matplotlib.pyplot as plt
 import utils.config as conf
-import utils.lights as light
 import wave
 import pyaudio
 import time
@@ -11,25 +9,36 @@ from tflite_runtime.interpreter import Interpreter
 from datetime import datetime
 
 class Listener:
-    def __init__(self):
+    def __init__(self, raspi_mode):
+        self.raspi_mode = raspi_mode
+
+        # Load RPi specific Modules
+        if self.raspi_mode:
+            import RPi.GPIO as GPIO
+            import utils.lights as light
+
         # Load config params
         config = conf.Config()
         self.sample_rate = config.WAV_FRAMERATE_HZ
-        self.channels = config.RESPEAKER_CHANNELS
+        self.channels = config.RESPEAKER_CHANNELS if self.raspi_mode else config.MAC_CHANNELS
         self.recording_chunk = config.RECORDING_CHUNK
-        self.max_recording_time_s = config.MAX_RECORDING_S
+        self.max_recording_frames = config.MAX_RECORDING_FRAMES
         self.button = config.BUTTON_ID
-        self.width = config.RESPEAKER_WIDTH
+        self.width = config.RESPEAKER_WIDTH if self.raspi_mode else config.MAC_WIDTH
+        self.format = config.RESPEAKER_FORMAT if self.raspi_mode else config.MAC_FORMAT
+        self.index = config.RESPEAKER_INDEX if self.raspi_mode else config.MAC_INDEX
+        self.max_silent_frames = config.MAX_SILENT_FRAMES
 
-        self.light = light.Lights()
         self.pyaudio = pyaudio.PyAudio()
 
-        # init button
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.button, GPIO.IN)
+        # init button & Lights
+        if self.raspi_mode:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.button, GPIO.IN)
+            self.light = light.Lights()
 
         self.silence_threshold = 32.5
-        self.chunk_duration = 0.5
+        self.chunk_duration = 0.7
         self.true_threshold = 0.5 #Predictions considered true
         self.muted = False
         self.recording_state = False
@@ -40,7 +49,7 @@ class Listener:
         self.feed_samples = int(self.sample_rate * self.clip_len_s)
 
         self.queue = Queue()
-        self.data = np.zeros(self.feed_samples, dtype='int8')
+        self.data = np.zeros(self.feed_samples, dtype=self.format)
         self.recording = []
 
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
@@ -52,8 +61,9 @@ class Listener:
             self.check_for_mute_action()
 
     def listen(self):
-        print('listening')
-        self.light.off()
+        print('Start listening')
+        if self.raspi_mode:
+            self.light.off()
 
 
         stream = self.get_stream()
@@ -76,7 +86,11 @@ class Listener:
         stream.close()
 
     def check_for_mute_action(self):
-        state = GPIO.input(self.button)
+        if self.raspi_mode:
+            state = GPIO.input(self.button)
+        else:
+            return
+
         # return if button was not pressed
         if state:
             return
@@ -94,8 +108,9 @@ class Listener:
 
         # remove the first few parts of the array due to weird prediction at the beginning
         predictions = predictions[50:]
+        print(np.amax(predictions))
 
-        return predictions > self.true_threshold
+        return np.amax(predictions) > self.true_threshold
 
 
     def after_keyword_action(self):
@@ -103,14 +118,19 @@ class Listener:
         self.silent_frames = 0
         self.recording_state = True
         self.queue.empty()
-        self.light.listen()
+        print('recording')
+        if self.raspi_mode:
+            self.light.listen()
 
 
     def after_recording(self, data):
         self.recording_state = False
+
+        #Simulate action
         time.sleep(5)
 
-        self.light.processing()
+        if self.raspi_mode:
+            self.light.processing()
 
         # TODO: For now, save the file
         filename = 'testapp' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
@@ -123,18 +143,20 @@ class Listener:
 
         self.recording_state = False
         self.recording = []
-        self.data = np.zeros(self.feed_samples, dtype='int8')
+        self.data = np.zeros(self.feed_samples, dtype=self.format)
 
-        self.light.off()
+        if self.raspi_mode:
+            self.light.off()
 
     def callback(self, in_data, frame_count, time_info, status):
-        data = in_data
+        data = np.frombuffer(in_data, dtype=self.format)
         if self.recording_state:
-            self.recording = np.append(self.recording, in_data)
             self.recorded_frames += 1
+            self.recording = np.append(self.recording, in_data)
             if (np.abs(data).mean() < self.silence_threshold):
                 self.silent_frames += 1
-            if (self.recorded_frames >= self.max_recording_time_s) or self.silent_frames > 2:
+            
+            if (self.recorded_frames >= self.max_recording_frames) or self.silent_frames > self.max_silent_frames:
                 print('recorded frames:' + str(self.recorded_frames))
                 print('silent frames:' + str(self.silent_frames))
                 self.after_recording(self.recording)
@@ -175,15 +197,15 @@ class Listener:
     def get_stream(self):
         stream = self.pyaudio.open(
             format=pyaudio.get_format_from_width(self.width),
-            channels=1,
+            channels=self.channels,
             rate=self.sample_rate,
             input=True,
             frames_per_buffer=self.sample_chunks,
-            input_device_index=0,
+            input_device_index=self.index,
             stream_callback=self.callback)
         return stream
 
 
 if __name__ == '__main__':
-    listener = Listener()
+    listener = Listener(False)
     listener.run()
