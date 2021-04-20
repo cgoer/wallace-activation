@@ -6,9 +6,9 @@ class Lights:
         self.strip = apa102.APA102(num_led=3, mosi=10, sclk=11, order='rbg')
         self.strip.set_global_brightness(15)
 
-        self.BLUE = '0x0000FF'
-        self.RED = '0xFF0000'
-        self.WHITE = '0x000000'
+        self.BLUE = 0x0000FF
+        self.RED = 0xFF0000
+        self.WHITE = 0x000000
 
     def off(self):
         self.strip.clear_strip()
