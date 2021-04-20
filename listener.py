@@ -40,7 +40,7 @@ class Listener:
         self.feed_samples = int(self.sample_rate * self.clip_len_s)
 
         self.queue = Queue()
-        self.data = []
+        self.data = np.zeros(self.feed_samples, dtype='int8')
         self.recording = []
 
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
@@ -123,7 +123,7 @@ class Listener:
 
         self.recording_state = False
         self.recording = []
-        self.data = []
+        self.data = np.zeros(self.feed_samples, dtype='int8')
 
         self.light.off()
 
