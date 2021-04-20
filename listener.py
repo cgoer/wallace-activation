@@ -19,6 +19,7 @@ class Listener:
         self.recording_chunk = config.RECORDING_CHUNK
         self.max_recording_time_s = config.MAX_RECORDING_S
         self.button = config.BUTTON_ID
+        self.width = config.RESPEAKER_WIDTH
 
         self.light = light.Lights()
         self.pyaudio = pyaudio.PyAudio()
@@ -27,7 +28,7 @@ class Listener:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.button, GPIO.IN)
 
-        self.silence_threshold = 100
+        self.silence_threshold = 32.5
         self.chunk_duration = 0.5
         self.true_threshold = 0.5 #Predictions considered true
         self.muted = False
@@ -39,7 +40,7 @@ class Listener:
         self.feed_samples = int(self.sample_rate * self.clip_len_s)
 
         self.queue = Queue()
-        self.data = np.zeros(self.feed_samples, dtype='int8')
+        self.data = []
         self.recording = []
 
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
@@ -115,19 +116,19 @@ class Listener:
         filename = 'testapp' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
         wf = wave.open(filename, 'wb')
         wf.setnchannels(self.channels)
-        wf.setsampwidth(pyaudio.get_sample_size(pyaudio.paInt8))
+        wf.setsampwidth(pyaudio.get_sample_size(pyaudio.get_format_from_width(self.width)))
         wf.setframerate(self.sample_rate)
         wf.writeframes(b''.join(data))
         wf.close()
 
         self.recording_state = False
         self.recording = []
-        self.data = np.zeros(self.feed_samples, dtype='int8')
+        self.data = []
 
         self.light.off()
 
     def callback(self, in_data, frame_count, time_info, status):
-        data = np.frombuffer(in_data, dtype='int8')
+        data = in_data
         if self.recording_state:
             self.recording = np.append(self.recording, in_data)
             self.recorded_frames += 1
@@ -173,7 +174,7 @@ class Listener:
 
     def get_stream(self):
         stream = self.pyaudio.open(
-            format=pyaudio.paInt8,
+            format=pyaudio.get_format_from_width(self.width),
             channels=1,
             rate=self.sample_rate,
             input=True,
