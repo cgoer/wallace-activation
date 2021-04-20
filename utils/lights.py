@@ -1,4 +1,4 @@
-from . import apa102
+from utils import apa102
 import time
 
 
@@ -24,14 +24,14 @@ class Lights:
         self.dev.show()
 
     def listen(self):
-        for i in range(1, 25):
-            colors = [i * v for v in self.basis]
-            self.set(colors)
-            time.sleep(0.01)
+        colors = [2, 0, 0, 1, 1, 0, 0, 2, 0]
+        self.set(colors)
 
     def processing(self):
-        self.listen()
+        colors = [2, 0, 0, 1, 1, 0, 0, 2, 0]
+        self.set(colors)
+
 
     def mute(self):
-        self.listen()
-
+        colors = [2, 0, 0, 1, 1, 0, 0, 2, 0]
+        self.set(colors)
