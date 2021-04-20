@@ -62,6 +62,8 @@ class Listener:
 
         try:
             while not self.muted:
+                if self.recording_state:
+                    continue
                 data = self.queue.get()
                 if len(data) > 0 and self.check_for_keyword(self.get_spectrogram(data)):
                     self.after_keyword_action()
@@ -85,7 +87,7 @@ class Listener:
             print('light muted')
 
     def check_for_keyword(self, spectrogram):
-        if self.wait < 20:
+        if self.wait < 5:
             self.wait +=1
             return False
         spectrogram = np.float32(np.expand_dims(spectrogram.swapaxes(0, 1), axis=0))
@@ -109,6 +111,8 @@ class Listener:
 
 
     def after_recording(self, data):
+        # TODO: stop and start stream?
+        # TODO: threading?
 
         print('lights processing')
 

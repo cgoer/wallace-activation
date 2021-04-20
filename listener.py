@@ -40,6 +40,7 @@ class Listener:
 
         self.queue = Queue()
         self.data = np.zeros(self.feed_samples, dtype='int8')
+        self.recording = []
 
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
 
@@ -59,8 +60,10 @@ class Listener:
 
         try:
             while not self.muted:
-                self.data = self.queue.get()
-                if self.check_for_keyword(self.get_spectrogram(self.data)):
+                if self.recording_state:
+                    continue
+                data = self.queue.get()
+                if len(data) > 0 and self.check_for_keyword(self.get_spectrogram(data)):
                     self.after_keyword_action()
                 self.check_for_mute_action()
         except (KeyboardInterrupt, SystemExit):
@@ -86,7 +89,7 @@ class Listener:
         self.interpreter.set_tensor(self.input_details[0]['index'], spectrogram)
         self.interpreter.invoke()
         output_data = self.interpreter.get_tensor(self.output_details[0]['index'])
-        predictions = output_data[0][0]
+        predictions = np.reshape(output_data, -1)
 
         # remove the first few parts of the array due to weird prediction at the beginning
         predictions = predictions[50:]
@@ -98,6 +101,7 @@ class Listener:
         self.recorded_frames = 0
         self.silent_frames = 0
         self.recording_state = True
+        self.queue.empty()
         self.light.listen()
 
 
@@ -108,33 +112,40 @@ class Listener:
         self.light.processing()
 
         # TODO: For now, save the file
-        filename = 'command' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
-        wf = wave.open('test/' + filename, 'wb')
+        filename = 'testapp' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.wav'
+        wf = wave.open(filename, 'wb')
         wf.setnchannels(self.channels)
         wf.setsampwidth(pyaudio.get_sample_size(pyaudio.paInt8))
         wf.setframerate(self.sample_rate)
         wf.writeframes(b''.join(data))
         wf.close()
 
+        self.recording_state = False
+        self.recording = []
+        self.data = np.zeros(self.feed_samples, dtype='int8')
 
         self.light.off()
 
     def callback(self, in_data, frame_count, time_info, status):
         data = np.frombuffer(in_data, dtype='int8')
         if self.recording_state:
-            self.data = np.append(self.data, data)
-            self.recorded_frames +=1
+            self.recording = np.append(self.recording, in_data)
+            self.recorded_frames += 1
             if (np.abs(data).mean() < self.silence_threshold):
-                self.silent_frames +=1
-            if (self.recorded_frames > self.max_recording_time_s) or self.silent_frames > (2*self.sample_rate):
-                self.after_recording(self.data[-(self.recorded_frames*self.sample_rate)])
+                self.silent_frames += 1
+            if (self.recorded_frames >= self.max_recording_time_s) or self.silent_frames > 2:
+                print('recorded frames:' + str(self.recorded_frames))
+                print('silent frames:' + str(self.silent_frames))
+                self.after_recording(self.recording)
             return (in_data, pyaudio.paContinue)
 
         # return if there was no noise
         if np.abs(data).mean() < self.silence_threshold:
+            print('silence')
             return (in_data, pyaudio.paContinue)
 
         self.data = np.append(self.data, data)
+        print('y')
         if len(self.data) > self.feed_samples:
             self.data = self.data[-self.feed_samples:]
             self.queue.put(self.data)
