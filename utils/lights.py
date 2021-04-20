@@ -34,3 +34,4 @@ class Lights:
 
     def mute(self):
         self.listen()
+
