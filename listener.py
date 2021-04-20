@@ -35,6 +35,7 @@ class Listener:
         if self.raspi_mode:
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(self.button, GPIO.IN)
+            self.gpio = GPIO
             self.light = light.Lights()
 
         self.silence_threshold = 32.5
@@ -87,7 +88,7 @@ class Listener:
 
     def check_for_mute_action(self):
         if self.raspi_mode:
-            state = GPIO.input(self.button)
+            state = self.gpio.input(self.button)
         else:
             return
 
