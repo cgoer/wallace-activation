@@ -13,7 +13,6 @@ class SnippetRecorder:
     Start the script and press the button to start recording.
     Recording starts when the Lights turn on and stops when they turn off again.
     """
-    CHUNK = 1024
 
     def __init__(self, record_seconds):
         # Setup config params
@@ -23,6 +22,7 @@ class SnippetRecorder:
         self.channels = config.RESPEAKER_CHANNELS
         self.width = config.RESPEAKER_WIDTH
         self.index = config.RESPEAKER_INDEX
+        self.chunk_size = config.RECORDING_CHUNK
 
         self.RECORD_SECONDS = record_seconds
 
@@ -66,8 +66,8 @@ class SnippetRecorder:
 
         frames = []
 
-        for i in range(0, int(self.sample_rate / self.CHUNK * self.RECORD_SECONDS)):
-            data = stream.read(self.CHUNK)
+        for i in range(0, int(self.sample_rate / self.chunk_size * self.RECORD_SECONDS)):
+            data = stream.read(self.chunk_size)
             frames.append(data)
 
         print("* done recording")
