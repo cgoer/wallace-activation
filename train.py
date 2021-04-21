@@ -60,14 +60,15 @@ class Train:
         converted_label = np.zeros((1, label_shape))
         for sequence in label:
             # add label at end time
-            converted_label = self.add_label(converted_label, sequence[1])
+            converted_label = self.add_label(converted_label,sequence[0], sequence[1])
 
         return converted_label
 
-    def add_label(self, y, segment_end_ms):
+    def add_label(self, y, segment_start_ms, segment_end_ms):
         label_shape = y.shape[1]
+        segment_start_y = int(segment_start_ms * label_shape / self.clip_len_ms)
         segment_end_y = int(segment_end_ms * label_shape / self.clip_len_ms)
-        for i in range(segment_end_y + 1, segment_end_y + 51):
+        for i in range(segment_start_y, segment_end_y):
             if i < label_shape:
                 y[0, i] = 1
         return y
