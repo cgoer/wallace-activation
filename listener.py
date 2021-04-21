@@ -8,6 +8,7 @@ from queue import Queue
 from tflite_runtime.interpreter import Interpreter
 from datetime import datetime
 
+
 class Listener:
     def __init__(self, raspi_mode):
         self.raspi_mode = raspi_mode
@@ -40,20 +41,20 @@ class Listener:
 
         self.silence_threshold = 32.5
         self.chunk_duration = 0.7
-        self.true_threshold = 0.5 #Predictions considered true
+        self.sample_chunks = int(self.sample_rate * self.chunk_duration)
+        self.clip_len_s = int(config.CLIP_LEN_MS / 1000)
+        self.feed_samples = int(self.sample_rate * self.clip_len_s)
+
+        # state vars
         self.muted = False
         self.recording_state = False
         self.silent_frames = 0
         self.recorded_frames = 0
-        self.sample_chunks = int(self.sample_rate * self.chunk_duration)
-        self.clip_len_s = int(config.CLIP_LEN_MS/1000)
-        self.feed_samples = int(self.sample_rate * self.clip_len_s)
-
-        self.queue = Queue()
         self.data = np.zeros(self.feed_samples, dtype=self.format)
         self.recording = []
 
-        self.interpreter, self.input_details, self.output_details = self.load_interpreter()
+        self.queue = Queue()
+        self.Predictor = Predictor()
 
     def run(self):
         while True:
@@ -66,7 +67,6 @@ class Listener:
         if self.raspi_mode:
             self.light.off()
 
-
         stream = self.get_stream()
         stream.start_stream()
 
@@ -75,8 +75,8 @@ class Listener:
                 if self.recording_state:
                     continue
                 data = self.queue.get()
-                if len(data) > 0 and self.check_for_keyword(self.get_spectrogram(data)):
-                    self.after_keyword_action()
+                if len(data) > 0 and self.Predictor.predict_data(data):
+                    self.on_keyword()
                 self.check_for_mute_action()
         except (KeyboardInterrupt, SystemExit):
             stream.stop_stream()
@@ -92,29 +92,16 @@ class Listener:
         else:
             return
 
-        # return if button was not pressed
         if state:
             return
 
         self.muted = not self.muted
         if self.muted:
             self.light.mute()
-
-    def check_for_keyword(self, spectrogram):
-        spectrogram = np.float32(np.expand_dims(spectrogram.swapaxes(0, 1), axis=0))
-        self.interpreter.set_tensor(self.input_details[0]['index'], spectrogram)
-        self.interpreter.invoke()
-        output_data = self.interpreter.get_tensor(self.output_details[0]['index'])
-        predictions = np.reshape(output_data, -1)
-
-        # remove the first few parts of the array due to weird prediction at the beginning
-        predictions = predictions[50:]
-        print(np.amax(predictions))
-
-        return np.amax(predictions) > self.true_threshold
+            time.sleep(1)
 
 
-    def after_keyword_action(self):
+    def on_keyword(self):
         self.recorded_frames = 0
         self.silent_frames = 0
         self.recording_state = True
@@ -123,11 +110,10 @@ class Listener:
         if self.raspi_mode:
             self.light.listen()
 
-
-    def after_recording(self, data):
+    def on_command(self, data):
         self.recording_state = False
 
-        #Simulate action
+        # Simulate action
         time.sleep(5)
 
         if self.raspi_mode:
@@ -160,7 +146,7 @@ class Listener:
             if (self.recorded_frames >= self.max_recording_frames) or self.silent_frames > self.max_silent_frames:
                 print('recorded frames:' + str(self.recorded_frames))
                 print('silent frames:' + str(self.silent_frames))
-                self.after_recording(self.recording)
+                self.on_command(self.recording)
             return (in_data, pyaudio.paContinue)
 
         # return if there was no noise
@@ -175,8 +161,40 @@ class Listener:
             self.queue.put(self.data)
         return (in_data, pyaudio.paContinue)
 
+    def get_stream(self):
+        stream = self.pyaudio.open(
+            format=pyaudio.get_format_from_width(self.width),
+            channels=self.channels,
+            rate=self.sample_rate,
+            input=True,
+            frames_per_buffer=self.sample_chunks,
+            input_device_index=self.index,
+            stream_callback=self.callback)
+        return stream
+
+
+class Predictor:
+    def __init__(self):
+        self.true_threshold = 0.5 #Predictions considered true
+        self.interpreter, self.input_details, self.output_details = self.load_interpreter()
+
+    def predict_data(self, data):
+        spectrogram = self.get_spectrogram(data)
+        spectrogram = np.float32(np.expand_dims(spectrogram.swapaxes(0, 1), axis=0))
+        self.interpreter.set_tensor(self.input_details[0]['index'], spectrogram)
+        self.interpreter.invoke()
+        output_data = self.interpreter.get_tensor(self.output_details[0]['index'])
+        predictions = np.reshape(output_data, -1)
+
+        # remove the first few parts of the array due to weird prediction at the beginning
+        predictions = predictions[50:]
+        print(np.amax(predictions))
+
+        return np.amax(predictions) > self.true_threshold
+
     @staticmethod
     def load_interpreter():
+        # TODO: Remove static model
         interpreter = Interpreter('models/wallace_activation_batch1_12-04-2021_23-18-37.tflite')
         interpreter.allocate_tensors()
         input_details = interpreter.get_input_details()
@@ -194,17 +212,6 @@ class Listener:
         elif nchannels == 2:
             pxx, _, _, _ = plt.specgram(data[:, 0], nfft, fs, noverlap=noverlap)
         return pxx
-
-    def get_stream(self):
-        stream = self.pyaudio.open(
-            format=pyaudio.get_format_from_width(self.width),
-            channels=self.channels,
-            rate=self.sample_rate,
-            input=True,
-            frames_per_buffer=self.sample_chunks,
-            input_device_index=self.index,
-            stream_callback=self.callback)
-        return stream
 
 
 if __name__ == '__main__':
