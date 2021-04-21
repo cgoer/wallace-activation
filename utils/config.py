@@ -1,7 +1,7 @@
 class Config:
     def __init__(self):
         # Directory Definitions
-        self.CONTEXT_PATHS = {'train': 'train/', 'test': 'test/', 'eval': 'eval/'}
+        self.CONTEXT_PATHS = {'train': 'train/', 'test': 'test/'}
         self.RAW_SOUND_DATA_PATHS = {'keyword': 'data/wallace/', 'background': 'data/background_noise/', 'non_keyword': 'data/other/'}
         self.GENERATED_DATA_PATHS = {'sound': 'data/generated/soundfiles/', 'label': 'data/generated/labels/'}
         self.MODEL_PATH = 'models/'
@@ -13,8 +13,8 @@ class Config:
 
         # Training Params
         self.TRAINING_SPLIT_PERCENT = 70
-        self.BATCHES = 10
-        self.BATCH_SIZE = 500
+        self.BATCHES = 2
+        self.BATCH_SIZE = 10
 
         # Pi Settings
         self.BUTTON_ID = 17

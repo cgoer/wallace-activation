@@ -30,20 +30,21 @@ class Train:
         # load train data
         print('load train data')
         spectrograms_train, labels_train = self.load_data('train', self.batch)
-        print(spectrograms_train.shape)
-        print(labels_train.shape)
+        print('Done. Loaded '+str(len(labels_train))+' items.')
+        print('load test data')
         spectrograms_test, labels_test = self.load_data('test', self.batch)
+        print('Done. Loaded ' + str(len(labels_test)) + ' items.')
+
+        print('Start Training.')
+        print('----------')
         self.model, history = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
-        # wipe data
-        spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
-        spectrograms_eval, labels_eval = self.load_data('eval', self.batch)
-        print('evaluating model')
-        self.model.evaluate(spectrograms_eval, labels_eval)
-        # wipe data
-        spectrograms_eval, labels_eval = None, None
+
+        print('done.')
+        print('----------')
         return self.save_model(self.model, history, self.batch)
 
-    def get_spectrogram(self, sound):
+    @staticmethod
+    def get_spectrogram(sound):
         rate, data = wavfile.read(sound)
         nfft = 200  # Length of each window segment
         fs = 8000  # Sampling frequencies
@@ -71,7 +72,6 @@ class Train:
                 y[0, i] = 1
         return y
 
-
     def train(self, spectrograms, labels, spectrograms_test, labels_test):
         model = self.get_model()
         history = model.fit(spectrograms, labels, epochs=self.epochs, validation_data=(spectrograms_test, labels_test))
@@ -91,7 +91,6 @@ class Train:
             exit(1)
         return self.set_model(self.sound_shape)
 
-
     def load_model(self):
         self.model = tf.keras.models.load_model(self.model_filename)
         return self.model
@@ -100,12 +99,9 @@ class Train:
         model = models.Sequential([
             layers.Input(shape=sound_shape),
             layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
-            layers.BatchNormalization(),
-            layers.Activation('relu'),
-            layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
             layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
             layers.BatchNormalization(),
-            layers.Activation('relu'),
+            layers.Dropout(0.2),
             layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
             layers.BatchNormalization(),
             layers.Activation('relu'),
@@ -167,6 +163,7 @@ class Train:
 
         return model_path
 
+
 if __name__ == '__main__':
     config = conf.Config()
     batches = config.BATCHES
@@ -175,6 +172,6 @@ if __name__ == '__main__':
     for batch in range(batches):
         if batch < start_batch:
             continue
-        print('Starting Batch '+str(batch)+'/'+str(batches))
+        print('Start training batch '+str(batch+1)+'/'+str(batches+1))
         tm = Train(batch, model_path)
         model_path = tm.run()
