@@ -21,7 +21,7 @@ class Train:
         self.training_split = config.TRAINING_SPLIT_PERCENT
         self.batch = batch
         self.model_filename = model_filename
-        self.epochs = 50
+        self.epochs = 10
 
         self.sound_shape = None
         self.model = None
@@ -102,18 +102,18 @@ class Train:
             layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
             layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
             layers.BatchNormalization(),
-            layers.Dropout(0.2),
-            layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
+            layers.Dropout(0.25),
+            layers.MaxPool1D(pool_size=2, strides=4, padding='valid'),
             layers.BatchNormalization(),
             layers.Activation('relu'),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.GRU(units=128, return_sequences=True),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.BatchNormalization(),
             layers.GRU(units=128, return_sequences=True),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.BatchNormalization(),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
             ])
         opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
@@ -168,11 +168,11 @@ class Train:
 if __name__ == '__main__':
     config = conf.Config()
     batches = config.BATCHES
-    model_path = None
-    start_batch = 0
+    model_path = 'models/wallace_activation_batch7_24-04-2021_13-51-00'
+    start_batch = 8
     for batch in range(batches):
         if batch < start_batch:
             continue
-        print('Start training batch '+str(batch+1)+'/'+str(batches+1))
+        print('Start training batch '+str(batch+1)+'/'+str(batches))
         tm = Train(batch, model_path)
         model_path = tm.run()
