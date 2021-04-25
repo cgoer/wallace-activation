@@ -9,10 +9,9 @@ class ModelTester:
         pass
 
     def run(self):
-        print('recording will start in 10 seconds')
-        filename = 'data/generated/soundfiles/train/0/47.wav'
+        filename = 'data/test1.wav'
         sound = np.swapaxes(np.array(self.get_spectrogram(filename)), 0, 1)
-        model = tf.keras.models.load_model('wallace_activation_batch1_12-04-2021_23-18-37')
+        model = tf.keras.models.load_model('models/wallace_activation_batch9_24-04-2021_15-54-50')
         x = np.expand_dims(sound, axis=0)
         print(x.shape)
         predictions = model.predict(x)
@@ -22,7 +21,7 @@ class ModelTester:
         label_shape = layers[layer_no].output_shape
         label_shape = label_shape[1]
 
-        label = self.convert_label(label_shape, np.load('data/generated/labels/train/0/47.npy'))
+        label = self.convert_label(label_shape, np.load('data/test1.npy'))
         label = np.swapaxes(np.array(label), 0, 1)
         label = np.reshape(label, (label_shape))
 
@@ -34,24 +33,23 @@ class ModelTester:
         plt.legend()
         plt.show()
 
-    @staticmethod
-    def add_label(self, y, segment_end_ms):
-        label_shape = y.shape[1]
-        segment_end_y = int(segment_end_ms * label_shape / 10000)
-        for i in range(segment_end_y + 1, segment_end_y + 51):
-            if i < label_shape:
-                y[0, i] = 1
-        return y
-
     def convert_label(self, label_shape, label):
         converted_label = np.zeros((1, label_shape))
         for sequence in label:
             # add label at end time
-            converted_label = self.add_label(converted_label, sequence[1])
+            converted_label = self.add_label(converted_label, sequence[0], sequence[1])
 
         return converted_label
 
-    @staticmethod
+    def add_label(self, y, segment_start_ms, segment_end_ms):
+        label_shape = y.shape[1]
+        segment_start_y = int(segment_start_ms * label_shape / 10000)
+        segment_end_y = int(segment_end_ms * label_shape / 10000)
+        for i in range(segment_start_y, segment_end_y):
+            if i < label_shape:
+                y[0, i] = 1
+        return y
+
     def get_spectrogram(self, sound):
         rate, data = wavfile.read(sound)
         nfft = 200  # Length of each window segment

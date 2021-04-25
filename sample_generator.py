@@ -12,7 +12,7 @@ class SampleGenerator:
     Input data may have any sample rate.
     Background input data may be any length, only the first x seconds will be imported.
     Non-Keyword data may be any length, only the first x seconds will be imported (see self.import_data() for more info)
-    This script will output a set of training, test and eval data in the directory defined at utils/config.py GENERATED_DATA_PATHS constant.
+    This script will output a set of training and test data in the directory defined at utils/config.py GENERATED_DATA_PATHS constant.
     It will also output an array of labels to each generated file. Each label containing arrays of the Begin and end time (ms) of each keyword in a sound file.
     """
     def __init__(self):
@@ -45,26 +45,23 @@ class SampleGenerator:
         print('Non-Keywords: ' + str(len(non_keyword)))
         print('Backgrounds: ' + str(len(background)))
         print('----------')
-        keyword_train, keyword_test, keyword_eval = self.split_train_test_eval(keyword)
-        non_keyword_train, non_keyword_test, non_keyword_eval = self.split_train_test_eval(non_keyword)
-        background_train, background_test, background_eval = self.split_train_test_eval(background)
+        keyword_train, keyword_test = self.split_train_test(keyword)
+        non_keyword_train, non_keyword_test = self.split_train_test(non_keyword)
+        background_train, background_test = self.split_train_test(background)
 
         for i in range(self.batches):
             runs = int(self.batch_size*(self.training_split/100))
             self.generate_samples('train', i, runs, background_train, keyword_train, non_keyword_train)
 
-            runs = int((self.batch_size*(1-self.training_split/100)) / 2)
+            runs = int(self.batch_size*(1-self.training_split/100))
             self.generate_samples('test', i, runs, background_test, keyword_test, non_keyword_test)
-
-            runs = int((self.batch_size*(1-self.training_split/100)) / 2)
-            self.generate_samples('eval', i, runs, background_eval, keyword_eval, non_keyword_eval)
 
         print('done.')
 
     def generate_samples(self, run_type, batch, runs, backgrounds, keywords, non_keywords):
         """
         Generate x samples of randomly selected backgrounds, keywords and non_keywords.
-        :param str run_type: Information about what type of sample set is generated (train/test/eval)
+        :param str run_type: Information about what type of sample set is generated (train/test)
         :param int runs: Number of runs
         :param list backgrounds: list of background AudioSegment objects
         :param list keywords: list of keyword AusioSegment objects
@@ -86,9 +83,10 @@ class SampleGenerator:
         :param list non_keywords:
         :param str run_type:
         :param int run_no:
+        :param int batch:
         """
         # Choose background and lower volume
-        background = random.choice(backgrounds) - 15
+        background = random.choice(backgrounds) - 25
         
         label = []
         indices = np.random.randint(len(keywords), size=10)
@@ -96,8 +94,8 @@ class SampleGenerator:
         indices = np.random.randint(len(non_keywords), size=10)
         non_keyword_set = [non_keywords[i] for i in indices]
 
-        # Get a slight overweight on non-keywords
-        order = np.random.choice([0,1],10,True, [0.7,0.3])
+        # Pick KW and NKW Samples
+        order = np.random.choice([0, 1], 10, True, [0.5, 0.5])
 
         time_left = self.clip_len_ms
         keyword_count = 0
@@ -179,7 +177,7 @@ class SampleGenerator:
         for filename in os.listdir(paths['non_keyword']):
             if filename.endswith("wav"):
                 nk = self.resample(AudioSegment.from_wav(paths['non_keyword'] + filename))
-                # only take up to 3.5s
+                # only take up to 4s
                 non_keyword.append(nk[:4000])
         return (keyword, non_keyword, background)
 
@@ -222,18 +220,16 @@ class SampleGenerator:
                 print('Directory Added. Please fill with data! Aborting.')
                 exit(404)
 
-    def split_train_test_eval(self, sound_array):
+    def split_train_test(self, sound_array):
         """
-        Randomly split array into train, test and eval array.
+        Randomly split array into train and test array.
         :param sound_array: list of AudioSegment objects
         :return train, test: list of AudioSegment objects
         """
         random.shuffle(sound_array)
         train_len = int(len(sound_array)*(self.training_split/100))
-        train, test_eval = sound_array[:train_len], sound_array[train_len:]
-        test_len = int(len(test_eval) / 2)
-        test, eval = test_eval[:test_len], test_eval[test_len:]
-        return train, test, eval
+        train, test = sound_array[:train_len], sound_array[train_len:]
+        return train, test
 
 
 if __name__ == '__main__':

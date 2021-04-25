@@ -10,7 +10,14 @@ from datetime import datetime
 
 
 class Listener:
+    """
+    Listens to input stream and calls a prediction class to classify if a certain keyword was said.
+    Records sound if keyword was said.
+    """
     def __init__(self, raspi_mode):
+        """
+        :param boolean raspi_mode: If true, loads raspberry-specific libraries and enables specific methods
+        """
         self.raspi_mode = raspi_mode
 
         # Load RPi specific Modules
@@ -57,12 +64,18 @@ class Listener:
         self.Predictor = Predictor()
 
     def run(self):
+        """
+        Main Method. Infinite loop: calls listen method if mute state is false.
+        """
         while True:
             if not self.muted:
                 self.listen()
             self.check_for_mute_action()
 
     def listen(self):
+        """
+        Activates input stream and calls prediction class if there is input to validate. Infinite loop.
+        """
         print('Start listening')
         if self.raspi_mode:
             self.light.off()
@@ -87,6 +100,9 @@ class Listener:
         stream.close()
 
     def check_for_mute_action(self):
+        """
+        check if button was pressed. Toggles mute state and performs light changes.
+        """
         if self.raspi_mode:
             state = self.gpio.input(self.button)
         else:
@@ -102,6 +118,9 @@ class Listener:
 
 
     def on_keyword(self):
+        """
+        Perform actions if Keyword was said
+        """
         self.recorded_frames = 0
         self.silent_frames = 0
         self.recording_state = True
@@ -111,6 +130,10 @@ class Listener:
             self.light.listen()
 
     def on_command(self, data):
+        """
+        Perform actions after voice input was recorded.
+        :param np.array data: The voice input data
+        """
         self.recording_state = False
 
         # Simulate action
@@ -128,14 +151,19 @@ class Listener:
         wf.writeframes(b''.join(data))
         wf.close()
 
-        self.recording_state = False
         self.recording = []
         self.data = np.zeros(self.feed_samples, dtype=self.format)
+        self.queue.empty()
+        self.recording_state = False
 
         if self.raspi_mode:
             self.light.off()
 
     def callback(self, in_data, frame_count, time_info, status):
+        """
+        Callback called from audio stream. If certain volume thereshold is overridden, saves data into queue for processing.
+        Saves data in different variable while recording. Ends recording state if certain silence thereshold or timespan passed.
+        """
         data = np.frombuffer(in_data, dtype=self.format)
         if self.recording_state:
             self.recorded_frames += 1
@@ -162,6 +190,10 @@ class Listener:
         return (in_data, pyaudio.paContinue)
 
     def get_stream(self):
+        """
+        Open pyaudio stream
+        :returns pyaudio: Stream object
+        """
         stream = self.pyaudio.open(
             format=pyaudio.get_format_from_width(self.width),
             channels=self.channels,
@@ -174,11 +206,19 @@ class Listener:
 
 
 class Predictor:
+    """
+    Predicts provided sound data. Loads tflite model.
+    """
     def __init__(self):
-        self.true_threshold = 0.5 #Predictions considered true
+        self.true_threshold = 0.8 #Predictions considered true
         self.interpreter, self.input_details, self.output_details = self.load_interpreter()
 
     def predict_data(self, data):
+        """
+        Predicts provided sound data using a previously loaded tflite model
+        :param np.array data: np.array of sound data
+        :returns boolean: Boolean if keyword was found or not
+        """
         spectrogram = self.get_spectrogram(data)
         spectrogram = np.float32(np.expand_dims(spectrogram.swapaxes(0, 1), axis=0))
         self.interpreter.set_tensor(self.input_details[0]['index'], spectrogram)
@@ -194,8 +234,12 @@ class Predictor:
 
     @staticmethod
     def load_interpreter():
+        """
+        Loads tflite model
+        :returns: Model interpreter object, input details and output details
+        """
         # TODO: Remove static model
-        interpreter = Interpreter('models/wallace_activation_batch1_12-04-2021_23-18-37.tflite')
+        interpreter = Interpreter('models/wallace_activation_batch9_24-04-2021_15-54-50.tflite')
         interpreter.allocate_tensors()
         input_details = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
@@ -203,6 +247,11 @@ class Predictor:
 
     @staticmethod
     def get_spectrogram(data):
+        """
+        Returns spectrogram from giben sound data array
+        :param np.array data: np.array of sound data
+        :returns np.array: Spectrogram as np.array
+        """
         nfft = 200  # Length of each window segment
         fs = 8000  # Sampling frequencies
         noverlap = 120  # Overlap between windows
@@ -215,5 +264,9 @@ class Predictor:
 
 
 if __name__ == '__main__':
+    """
+    Runs listener application. 
+    Set Param to True if runing on RaspberryPi
+    """
     listener = Listener(False)
     listener.run()

@@ -10,7 +10,15 @@ from datetime import datetime
 import json
 
 class Train:
+    """
+    Train Class uses the generated data from sample_generator and fts them onto a defined model.
+    It will run one batch provided and return the filename of the generated model.
+    """
     def __init__(self, batch, model_filename=None):
+        """
+        :param int batch: The current batch number to use for incoming data
+        :param str|None model_filename: A Filepath to a model to re-train
+        """
         # import config
         config = conf.Config()
         self.context_paths = config.CONTEXT_PATHS
@@ -21,29 +29,38 @@ class Train:
         self.training_split = config.TRAINING_SPLIT_PERCENT
         self.batch = batch
         self.model_filename = model_filename
-        self.epochs = 50
+        self.epochs = 10
 
         self.sound_shape = None
         self.model = None
 
     def run(self):
+        """
+        :returns str: The Filepath of the generated model
+        """
         # load train data
         print('load train data')
         spectrograms_train, labels_train = self.load_data('train', self.batch)
-        print(spectrograms_train.shape)
-        print(labels_train.shape)
+        print('Done. Loaded '+str(len(labels_train))+' items.')
+        print('load test data')
         spectrograms_test, labels_test = self.load_data('test', self.batch)
+        print('Done. Loaded ' + str(len(labels_test)) + ' items.')
+
+        print('Start Training.')
+        print('----------')
         self.model, history = self.train(spectrograms_train, labels_train, spectrograms_test, labels_test)
-        # wipe data
-        spectrograms_train, labels_train, spectrograms_test, labels_test = None, None, None, None
-        spectrograms_eval, labels_eval = self.load_data('eval', self.batch)
-        print('evaluating model')
-        self.model.evaluate(spectrograms_eval, labels_eval)
-        # wipe data
-        spectrograms_eval, labels_eval = None, None
+
+        print('done.')
+        print('----------')
         return self.save_model(self.model, history, self.batch)
 
-    def get_spectrogram(self, sound):
+    @staticmethod
+    def get_spectrogram(sound):
+        """
+        Loads a soundfile and returns spectrogram
+        :param str sound: Filepath to wavfile
+        :returns np.array: Spectrogram as np.array
+        """
         rate, data = wavfile.read(sound)
         nfft = 200  # Length of each window segment
         fs = 8000  # Sampling frequencies
@@ -56,28 +73,51 @@ class Train:
         return pxx
 
     def convert_label(self, label_shape, label):
+        """
+        Converts a label from timestep in milliseconds to timesteps in a desired shape
+        :param np.array.shape label_shape: desired shape
+        :param np.array label: array of arrays containing start- and end-time
+        """
         converted_label = np.zeros((1, label_shape))
         for sequence in label:
             # add label at end time
-            converted_label = self.add_label(converted_label, sequence[1])
+            converted_label = self.add_label(converted_label,sequence[0], sequence[1])
 
         return converted_label
 
-    def add_label(self, y, segment_end_ms):
-        label_shape = y.shape[1]
-        segment_end_y = int(segment_end_ms * label_shape / self.clip_len_ms)
-        for i in range(segment_end_y + 1, segment_end_y + 51):
+    def add_label(self, label, segment_start_ms, segment_end_ms):
+        """
+        Helper function for convert_label doing the actual conversion
+        :param np.array label: a np array representing the label in the final format
+        :param int segment_start_ms: The start time in ms
+        :param int segment_end_ms: The end time in ms
+        """
+        label_shape = label.shape[1]
+        segment_start = int(segment_start_ms * label_shape / self.clip_len_ms)
+        segment_end = int(segment_end_ms * label_shape / self.clip_len_ms)
+        for i in range(segment_start, segment_end):
             if i < label_shape:
-                y[0, i] = 1
-        return y
-
+                label[0, i] = 1
+        return label
 
     def train(self, spectrograms, labels, spectrograms_test, labels_test):
+        """
+        Fits Data to the model.
+        :param np.array spectrograms: A numpy array of spectrograms (training data)
+        :param np.array labels: A np.array of labels (traning data)
+        :param np.array spectrograms_test: A numpy array of spectrograms (test data)
+        :param np.array labels_test: A np.array of labels (test data)
+        :returns: Model Object and History object of the fitting iteration
+        """
         model = self.get_model()
         history = model.fit(spectrograms, labels, epochs=self.epochs, validation_data=(spectrograms_test, labels_test))
         return model, history
 
     def get_model(self):
+        """
+        Returns a model depending of current status of the training suite.
+        :returns tf.keras.models: tf.keras.models object
+        """
         # Return cached model
         if self.model is not None:
             return self.model
@@ -91,32 +131,37 @@ class Train:
             exit(1)
         return self.set_model(self.sound_shape)
 
-
     def load_model(self):
+        """
+        Loads a model from a given filepath
+        :returns tf.keras.models: tf.keras.models
+        """
         self.model = tf.keras.models.load_model(self.model_filename)
         return self.model
 
     def set_model(self, sound_shape):
+        """
+        Defines a net tf.keras.models model
+        :params np.array sound_shape: The shape of inputs
+        :returns tf.keras.models: Returns a tf.keras.models object
+        """
         model = models.Sequential([
             layers.Input(shape=sound_shape),
             layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
-            layers.BatchNormalization(),
-            layers.Activation('relu'),
-            layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
             layers.Conv1D(196, kernel_size=15, activation=tf.nn.relu),
             layers.BatchNormalization(),
-            layers.Activation('relu'),
-            layers.MaxPool1D(pool_size=2, strides=2, padding='valid'),
+            layers.Dropout(0.25),
+            layers.MaxPool1D(pool_size=2, strides=4, padding='valid'),
             layers.BatchNormalization(),
             layers.Activation('relu'),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.GRU(units=128, return_sequences=True),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.BatchNormalization(),
             layers.GRU(units=128, return_sequences=True),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.BatchNormalization(),
-            layers.Dropout(0.2),
+            layers.Dropout(0.4),
             layers.TimeDistributed(layers.Dense(1, activation='sigmoid'))
             ])
         opt = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
@@ -126,6 +171,13 @@ class Train:
         return self.model
 
     def load_data(self, context, batch_no):
+        """
+        Loads the data in a specific batch and context (e.g. Train/Test) from the desired directory.
+        Also loads the model to get the current label shape.
+        :params str context: The Context currently used (Train/test)
+        :params int batch_no: Current batch number to use the correct directory
+        :returns np.array: np.arrays of all sounds and labels
+        """
         path = self.import_data_paths['sound']+self.context_paths[context]+str(batch_no)+'/'
         sounds = []
         imported_sounds = []
@@ -152,6 +204,12 @@ class Train:
         return np.array(sounds), np.array(labels)
 
     def save_model(self, model, history, batch):
+        """
+        Saves model and history, converts model to tflite and also saves it.
+        :params tf.keras.models model: The model to save
+        :params tf.keras.models history: the history to save
+        :params int batch: Number of current iteration
+        """
         model_path = self.model_path+'wallace_activation_batch'+str(batch)+'_'+datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         model.save(model_path)
 
@@ -167,7 +225,12 @@ class Train:
 
         return model_path
 
+
 if __name__ == '__main__':
+    """
+    Main Function. A Model and next batch can be defined, if the fitting stopped at some point.
+    Iterates through the batches and initiates the Training class.
+    """
     config = conf.Config()
     batches = config.BATCHES
     model_path = None
@@ -175,6 +238,6 @@ if __name__ == '__main__':
     for batch in range(batches):
         if batch < start_batch:
             continue
-        print('Starting Batch '+str(batch)+'/'+str(batches))
+        print('Start training batch '+str(batch+1)+'/'+str(batches))
         tm = Train(batch, model_path)
         model_path = tm.run()
